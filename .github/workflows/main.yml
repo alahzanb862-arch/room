@@ -13,20 +13,47 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Unpack ZIP if present
+        run: |
+          shopt -s nullglob
+          for z in *.zip **/*.zip; do
+            if [ -f "$z" ]; then
+              echo "Unpacking $z..."
+              unzip -o "$z" -d unpacked_src
+            fi
+          done
+
+          if [ -d "unpacked_src" ]; then
+            # إذا كان الملف المضغوط يحتوي مجلداً واحداً بداخله المشروع، نأخذ محتوياته
+            subfolders=$(find unpacked_src -mindepth 1 -maxdepth 1 -type d)
+            count=$(echo "$subfolders" | wc -l)
+            if [ "$count" -eq 1 ] && [ ! -f "unpacked_src/build.gradle.kts" ] && [ ! -f "unpacked_src/settings.gradle.kts" ]; then
+              src_dir="$subfolders"
+            else
+              src_dir="unpacked_src"
+            fi
+            cp -rn "$src_dir"/* . 2>/dev/null || true
+            cp -rn "$src_dir"/.[!.]* . 2>/dev/null || true
+          fi
+
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
       - name: Build Debug APK
-        run: ./gradlew assembleDebug
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x gradlew
+            ./gradlew assembleDebug
+          else
+            gradle assembleDebug
+          fi
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: app-debug-apk
           path: app/build/outputs/apk/debug/*.apk
